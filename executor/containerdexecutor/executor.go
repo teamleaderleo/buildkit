@@ -207,6 +207,7 @@ func (w *containerdExecutor) Run(ctx context.Context, id string, root executor.M
 	if releaseSpec != nil {
 		defer releaseSpec()
 	}
+	defer executor.MountStubsCleanerForSpec(context.WithoutCancel(ctx), details.rootfsPath, spec.Mounts, meta.RemoveMountStubsRecursive)()
 
 	opts := []ctd.NewContainerOpts{
 		ctd.WithSpec(spec),

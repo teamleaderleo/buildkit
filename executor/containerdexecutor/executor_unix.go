@@ -107,7 +107,6 @@ func (w *containerdExecutor) prepareExecutionEnv(ctx context.Context, rootMount 
 			bklog.G(ctx).WithError(err).Error("failed to unmount rootfs")
 		}
 	})
-	releasers = append(releasers, executor.MountStubsCleaner(ctx, details.rootfsPath, mounts, meta.RemoveMountStubsRecursive))
 
 	return resolvConf, hostsFile, releaseAll, nil
 }
