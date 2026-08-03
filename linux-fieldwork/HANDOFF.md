@@ -3,7 +3,7 @@
 Updated: 2026-08-03
 State: READY FOR HUMAN SEND/HOLD REVIEW — RUNC/NATIVE PROVEN
 Branch: `linux-fieldwork/rootless-reproducibility`
-Current branch head: `2c1fa9f7e5975c4a2bc46542df3c071a44c9db39`
+Exact tested candidate head: `2c1fa9f7e5975c4a2bc46542df3c071a44c9db39`
 Fork base: `master` at `df0761886a20e368d75e0aa6bb3f20874f58b692`
 Internal review carrier: `teamleaderleo/buildkit#3`
 Upstream issue: `moby/buildkit#6686`
@@ -89,7 +89,7 @@ Final focused workflow:
 
 - run: `30840454069`;
 - job: `91775919207`;
-- exact branch head: `2c1fa9f7e5975c4a2bc46542df3c071a44c9db39`;
+- exact tested candidate head: `2c1fa9f7e5975c4a2bc46542df3c071a44c9db39`;
 - generated merge: `4a27723011a9d6a363352ceb962b508588605031`;
 - result: success.
 
