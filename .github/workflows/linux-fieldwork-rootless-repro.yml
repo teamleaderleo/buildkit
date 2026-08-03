@@ -70,24 +70,27 @@ jobs:
           cat /tmp/buildkitd-rootful.log
           cat /tmp/buildkitd-rootless.log
           exit 1
-      - name: Run rootful/rootless OCI discriminator
-        id: discriminator
+      - name: Reproduce implicit runtime-mountpoint divergence
         run: |
           set +e
           PATH="$PWD/bin:$PATH" \
           ROOTFUL_ADDR=unix:///tmp/bk-rootful.sock \
           ROOTLESS_ADDR=unix:///tmp/bk-rootless.sock \
           /bin/sh ./linux-fieldwork/repro-rootless-oci.sh \
-            > /tmp/rootless-repro.log 2>&1
+            > /tmp/rootless-repro-implicit.log 2>&1
           rc=$?
           set -e
-          cat /tmp/rootless-repro.log
-          echo "status=$rc" >> "$GITHUB_OUTPUT"
-          case "$rc" in
-            0) echo "rootfs identities match on this matrix" ;;
-            1) echo "rootless divergence reproduced" ;;
-            *) echo "invalid discriminator/tooling result"; exit "$rc" ;;
-          esac
+          cat /tmp/rootless-repro-implicit.log
+          test "$rc" -eq 1
+      - name: Verify explicit runtime-mountpoint parity control
+        run: |
+          PATH="$PWD/bin:$PATH" \
+          ROOTFUL_ADDR=unix:///tmp/bk-rootful.sock \
+          ROOTLESS_ADDR=unix:///tmp/bk-rootless.sock \
+          PRECREATE_RUNTIME_DIRS=1 \
+          /bin/sh ./linux-fieldwork/repro-rootless-oci.sh \
+            > /tmp/rootless-repro-explicit.log 2>&1
+          cat /tmp/rootless-repro-explicit.log
       - name: Stop workers
         if: always()
         run: |
@@ -100,5 +103,6 @@ jobs:
           path: |
             /tmp/buildkitd-rootful.log
             /tmp/buildkitd-rootless.log
-            /tmp/rootless-repro.log
+            /tmp/rootless-repro-implicit.log
+            /tmp/rootless-repro-explicit.log
           if-no-files-found: warn
