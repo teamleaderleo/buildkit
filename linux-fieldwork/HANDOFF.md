@@ -1,87 +1,116 @@
 # Linux Fieldwork handoff — rootless OCI reproducibility
 
-Updated: 2026-08-02
-State: REPRODUCTION READY
+Updated: 2026-08-03
+State: CANDIDATE EXECUTION QUEUED
 Branch: `linux-fieldwork/rootless-reproducibility`
-Base: fork `master` at `df0761886a20e368d75e0aa6bb3f20874f58b692`
+Current branch head: `4f7e6d6aff82c969e7d8080f56c5669db028f8ac`
+Fork base: `master` at `df0761886a20e368d75e0aa6bb3f20874f58b692`
+Internal review carrier: `teamleaderleo/buildkit#3`
 Upstream issue: `moby/buildkit#6686`
 
-## Finding
+## Exact reproduced defect
 
-BuildKit issue #6686 reports that rootless and rootful workers produce different image rootfs identities because runtime-created `/proc` and `/sys` stub directories differ. The issue remains open and unassigned.
+Focused workflow `30836946481`, job `91764326951`, built matching rootful and rootless BuildKit daemons from exact source head `7207045e68e3b8888926d0429a6b726834ececf1`. Both used the native snapshotter and runc. The fixture used `FROM scratch`, a deterministic locally compiled static helper, no registry input, no cache, and exporter timestamp rewriting at epoch `946684800`.
 
-This is independently corroborated by merged PR #6681. Its compatibility test had to pre-create `/proc` and `/sys` specifically to avoid a rootless/non-rootless runtime snapshot difference. That workaround keeps compatibility goldens stable while leaving the underlying worker divergence unresolved.
+The helper-copy layer was identical. The `RUN` layer differed:
 
-## Ownership boundary observed
+- rootful diff ID: `sha256:0bc3d5671a2ae10fcc90ba7bcdd2395a922802ff40dc0ccbca9500a8a527ffa1`;
+- rootless diff ID: `sha256:8543a6b1010bf77ec314441cac03ad659f0061c7f64aec807810dfe3661eaef6`.
 
-`executor/oci.GenerateSpec()` constructs the OCI spec and then, when BuildKit itself runs in a user namespace, applies `rootlessmountopts.FixUpOCI()` to bind mounts. `FixUpOCI()` only preserves kernel-locked unprivileged mount flags; it does not intentionally define `/proc` or `/sys` directory metadata.
+Exact mountpoint metadata:
 
-Therefore the next discriminator must establish where the different stub metadata first appears:
+- rootful committed `proc/` and `sys/`, both directory mode `0755`, uid/gid `0`, mtime `946684800`;
+- rootless committed `proc/` with identical metadata and did not commit `sys/`.
 
-1. generated OCI spec;
-2. rootfs before runtime start;
-3. rootfs after runtime setup and exit;
-4. committed snapshot diff.
+This is a missing-member divergence, not a timestamp, mode, uid/gid, PAX, compression, base-image, registry, or cache difference.
 
-A source fix before that capture would guess across BuildKit, containerd OCI defaults, and the selected OCI runtime.
+Retained artifact:
+
+- artifact ID: `8865260431`;
+- digest: `sha256:6f0effc21071f58b3a0b0cc7a28b5f6427d6b883ec79c2c2bf6d28508439235c`.
+
+## Source owner
+
+The runc executor generates the OCI spec and then applies `rootlessspecconv.ToRootless(spec)` only for the rootless worker. `ToRootless()` deliberately removes every mount whose destination begins with `/sys`.
+
+Therefore:
+
+- rootful retains the default sysfs mount, so runc creates an absent lower-root `/sys` mountpoint;
+- rootless removes that mount, so runc creates no `/sys` path;
+- the rootful empty mountpoint reaches the committed snapshot.
+
+BuildKit already has the correct ownership abstraction in `executor.MountStubsCleaner()`: it records mount destinations absent before execution, removes only empty stubs afterward, and restores parent timestamps. Its blind spot is call timing. Both OCI executors register cleanup before the finalized spec exists and pass only BuildKit's explicit mounts, so default OCI destinations such as `/proc` and `/sys` are omitted.
+
+## Selected candidate
+
+Retained source patch:
+
+- `linux-fieldwork/0001-executor-clean-finalized-oci-mount-stubs.patch`.
+
+Candidate behavior:
+
+1. finalize the OCI spec;
+2. apply rootless conversion where applicable;
+3. register cleanup from the actual `spec.Mounts[].Destination` list;
+4. sort recorded paths deepest-first so nested stubs drain before parents;
+5. retain the existing rule that pre-existing image paths are never removed.
+
+This makes ownership mode-correct:
+
+- rootful owns runtime-created `/proc` and `/sys` stubs because its final spec mounts there;
+- rootless owns `/proc` but does not own `/sys` after conversion;
+- an image-provided `/proc` or `/sys` is preserved;
+- an empty `/sys` deliberately created by a rootless build remains user-owned.
+
+## Candidate tests
+
+`executor/stubs_spec_test.go` covers:
+
+- nested runtime-created `/sys/fs/cgroup` cleanup before `/sys`;
+- retention of a pre-existing image `/sys`;
+- rootless-spec ownership: `/proc` is removed while user-created `/sys` survives.
+
+The focused workflow now:
+
+1. applies the retained source patch with `git apply --check --recount`;
+2. formats changed Go files and checks the diff;
+3. runs `go test ./executor`;
+4. builds exact candidate `buildkitd` and `buildctl` binaries;
+5. starts matching rootful and rootless native-snapshotter workers;
+6. requires the implicit `FROM scratch` RUN outputs to have identical rootfs identities;
+7. requires the explicit pre-created `/proc` and `/sys` control to remain identical;
+8. uploads worker and comparator logs.
+
+Candidate workflow currently queued:
+
+- run `30838430937`.
+
+A separate baseline-control run at pre-candidate head `ffd7a47352369b59cca940063a2fb48765c83e10` is also queued as run `30837593710`. It requires the implicit case to reproduce divergence and the explicit pre-created-directory control to converge.
 
 ## Branch contents
 
-- `linux-fieldwork/repro-rootless-oci.sh`
-  - builds the same no-cache exec layer through caller-supplied rootful and rootless BuildKit addresses;
-  - exports both results as OCI archives;
-  - fixes build timestamps through `SOURCE_DATE_EPOCH` plus exporter timestamp rewriting;
-  - delegates structural comparison to the Python tool.
-- `linux-fieldwork/compare-oci-rootfs.py`
-  - resolves a single-platform OCI archive;
-  - compares uncompressed `rootfs.diff_ids` rather than incidental manifest annotations;
-  - on divergence, prints the first differing layer descriptor and exact `/proc` and `/sys` tar metadata;
-  - exits 0 for identical rootfs identities, 1 for a reproduced divergence, and 2 for invalid input/tooling errors.
+- `linux-fieldwork/repro-rootless-oci.sh` — deterministic two-worker build, with optional `PRECREATE_RUNTIME_DIRS=1` negative control;
+- `linux-fieldwork/compare-oci-rootfs.py` — compares uncompressed rootfs diff IDs and emits exact `/proc` and `/sys` metadata;
+- `executor/stubs_spec_test.go` — focused ownership tests;
+- `linux-fieldwork/0001-executor-clean-finalized-oci-mount-stubs.patch` — source candidate;
+- `.github/workflows/linux-fieldwork-rootless-repro.yml` — exact candidate execution;
+- this handoff.
 
-## Local validation
+## First incomplete step
 
-The execution environment did not contain two BuildKit daemons, so the live rootful/rootless gate remains pending.
+Read run `30838430937`.
 
-Completed local gates:
+- If patch application or unit tests fail, classify the source/test carrier before changing behavior.
+- If workers start but implicit parity remains red, inspect the candidate layer metadata and runtime logs; do not normalize at export.
+- If both implicit and explicit matrices pass, rerun the exact focused workflow once, review the complete current diff, and promote the internal PR to a human send/hold decision.
 
-- Python syntax compilation: PASS;
-- shell syntax with `/bin/sh -n`: PASS;
-- two synthetic identical OCI archives: comparator status 0, `rootfs-identical`;
-- synthetic archives differing only in `/proc` directory mode: comparator status 1, `rootfs-different`, first differing layer 0, and exact runtime-mountpoint metadata emitted;
-- temporary synthetic archives were removed.
+## Scope boundaries
 
-## Exact live command
-
-```text
-ROOTFUL_ADDR=unix:///run/buildkit/buildkitd.sock \
-ROOTLESS_ADDR=unix:///run/user/1000/buildkit/buildkitd.sock \
-./linux-fieldwork/repro-rootless-oci.sh
-```
-
-The current defect is reproduced when the command exits 1 and the output isolates `/proc` or `/sys` metadata in the first differing layer. A repaired implementation should make the command exit 0.
-
-Pin `BASE_IMAGE` to a digest when collecting durable evidence, for example:
-
-```text
-BASE_IMAGE=docker.io/library/busybox@sha256:<digest> ...
-```
-
-## Next technical step
-
-Run the live gate against matching rootful and rootless workers built from this exact commit. If it reproduces:
-
-1. capture the generated OCI specs for the exec operation;
-2. compare `/proc` and `/sys` metadata before runtime start, after runtime exit, and in the committed upper snapshot;
-3. repeat with both runc and crun where available;
-4. place the fix at the earliest BuildKit-owned boundary that can normalize the metadata without masking runtime-owned changes;
-5. convert the reproducer into the smallest integration test supported by the worker matrix.
-
-## Scope exclusions
-
-- Do not retain PR #6681's pre-created-directory workaround as the product fix; it changes test input to hide the divergence.
-- Do not normalize the whole exported tar stream after the fact; that would conceal other rootless reproducibility defects.
-- Do not assume `FixUpOCI()` owns the defect until the generated spec and runtime transition are compared.
+- Current evidence covers Linux, runc, native snapshotter, scratch-based OCI export, and matching exact-source rootful/rootless workers.
+- containerd executor source is included because it has the same cleanup-registration gap, but a live containerd-worker matrix has not run.
+- crun and other runtimes remain unexecuted.
+- The candidate does not normalize exporter tar streams or rewrite user-requested metadata.
 
 ## External-contact state
 
-`false; none occurred`. No upstream issue, pull request, comment, review, discussion, or email was created.
+`false; none occurred`. No canonical upstream issue comment, pull request, review, reaction, email, or other interaction was created.
