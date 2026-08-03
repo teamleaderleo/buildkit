@@ -1,0 +1,101 @@
+name: Linux Fieldwork rootless reproducibility
+
+on:
+  push:
+    branches:
+      - linux-fieldwork/rootless-reproducibility
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  two-worker-discriminator:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Install runtime dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y rootlesskit runc uidmap
+          user=$(id -un)
+          grep -q "^${user}:" /etc/subuid || echo "${user}:100000:65536" | sudo tee -a /etc/subuid
+          grep -q "^${user}:" /etc/subgid || echo "${user}:100000:65536" | sudo tee -a /etc/subgid
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+      - name: Build exact-commit binaries
+        run: |
+          mkdir -p bin
+          go build -trimpath -o bin/buildkitd ./cmd/buildkitd
+          go build -trimpath -o bin/buildctl ./cmd/buildctl
+      - name: Start matching rootful and rootless workers
+        run: |
+          set -eu
+          mkdir -p /tmp/bk-rootful /tmp/bk-rootless /tmp/bk-rootless-runtime /tmp/bk-rootlesskit
+          sudo ./bin/buildkitd \
+            --root /tmp/bk-rootful \
+            --addr unix:///tmp/bk-rootful.sock \
+            --oci-worker-snapshotter=native \
+            --containerd-worker=false \
+            >/tmp/buildkitd-rootful.log 2>&1 &
+          echo $! >/tmp/buildkitd-rootful.pid
+
+          XDG_RUNTIME_DIR=/tmp/bk-rootless-runtime \
+          rootlesskit \
+            --state-dir=/tmp/bk-rootlesskit \
+            --net=host \
+            ./bin/buildkitd \
+              --root /tmp/bk-rootless \
+              --addr unix:///tmp/bk-rootless.sock \
+              --oci-worker-snapshotter=native \
+              --containerd-worker=false \
+            >/tmp/buildkitd-rootless.log 2>&1 &
+          echo $! >/tmp/buildkitd-rootless.pid
+
+          for _ in $(seq 1 120); do
+            if [ -S /tmp/bk-rootful.sock ] && [ -S /tmp/bk-rootless.sock ]; then
+              sudo chmod 666 /tmp/bk-rootful.sock
+              exit 0
+            fi
+            sleep 1
+          done
+
+          cat /tmp/buildkitd-rootful.log
+          cat /tmp/buildkitd-rootless.log
+          exit 1
+      - name: Run rootful/rootless OCI discriminator
+        id: discriminator
+        run: |
+          set +e
+          PATH="$PWD/bin:$PATH" \
+          ROOTFUL_ADDR=unix:///tmp/bk-rootful.sock \
+          ROOTLESS_ADDR=unix:///tmp/bk-rootless.sock \
+          ./linux-fieldwork/repro-rootless-oci.sh \
+            > /tmp/rootless-repro.log 2>&1
+          rc=$?
+          set -e
+          cat /tmp/rootless-repro.log
+          echo "status=$rc" >> "$GITHUB_OUTPUT"
+          case "$rc" in
+            0) echo "rootfs identities match on this matrix" ;;
+            1) echo "rootless divergence reproduced" ;;
+            *) echo "invalid discriminator/tooling result"; exit "$rc" ;;
+          esac
+      - name: Stop workers
+        if: always()
+        run: |
+          if [ -f /tmp/buildkitd-rootless.pid ]; then kill "$(cat /tmp/buildkitd-rootless.pid)" 2>/dev/null || true; fi
+          if [ -f /tmp/buildkitd-rootful.pid ]; then sudo kill "$(cat /tmp/buildkitd-rootful.pid)" 2>/dev/null || true; fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: linux-fieldwork-rootless-repro
+          path: |
+            /tmp/buildkitd-rootful.log
+            /tmp/buildkitd-rootless.log
+            /tmp/rootless-repro.log
+          if-no-files-found: warn
