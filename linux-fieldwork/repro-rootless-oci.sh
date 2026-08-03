@@ -6,6 +6,7 @@ set -eu
 
 BASE_IMAGE=${BASE_IMAGE:-scratch}
 SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH:-946684800}
+PRECREATE_RUNTIME_DIRS=${PRECREATE_RUNTIME_DIRS:-0}
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 work=$(mktemp -d "${TMPDIR:-/tmp}/buildkit-rootless-repro.XXXXXX")
@@ -15,9 +16,7 @@ mkdir -p "$work/context"
 cat >"$work/helper.go" <<'EOF'
 package main
 
-import (
-    "os"
-)
+import "os"
 
 func main() {
     if err := os.MkdirAll("/generated/deeper", 0o755); err != nil {
@@ -38,13 +37,26 @@ CGO_ENABLED=0 go build \
     -o "$work/context/lf-repro-helper" \
     "$work/helper.go"
 
-cat >"$work/context/Dockerfile" <<'EOF'
+if [ "$PRECREATE_RUNTIME_DIRS" = 1 ]; then
+    mkdir -p "$work/context/proc" "$work/context/sys"
+    cat >"$work/context/Dockerfile" <<'EOF'
+ARG BASE_IMAGE=scratch
+FROM ${BASE_IMAGE}
+COPY proc /proc
+COPY sys /sys
+COPY lf-repro-helper /lf-repro-helper
+ARG SOURCE_DATE_EPOCH
+RUN ["/lf-repro-helper"]
+EOF
+else
+    cat >"$work/context/Dockerfile" <<'EOF'
 ARG BASE_IMAGE=scratch
 FROM ${BASE_IMAGE}
 COPY lf-repro-helper /lf-repro-helper
 ARG SOURCE_DATE_EPOCH
 RUN ["/lf-repro-helper"]
 EOF
+fi
 
 build_one() {
     label=$1
