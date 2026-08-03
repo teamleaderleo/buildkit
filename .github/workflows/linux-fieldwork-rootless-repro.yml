@@ -32,8 +32,8 @@ jobs:
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
       - name: Apply candidate and run focused unit tests
         run: |
-          git apply --check --recount linux-fieldwork/0001-executor-clean-finalized-oci-mount-stubs.patch
-          git apply --recount linux-fieldwork/0001-executor-clean-finalized-oci-mount-stubs.patch
+          git apply --check linux-fieldwork/0001-executor-clean-finalized-oci-mount-stubs.patch
+          git apply linux-fieldwork/0001-executor-clean-finalized-oci-mount-stubs.patch
           gofmt -w executor/stubs.go executor/stubs_spec_test.go executor/runcexecutor/executor.go executor/containerdexecutor/executor.go executor/containerdexecutor/executor_unix.go
           git diff --check
           go test ./executor
