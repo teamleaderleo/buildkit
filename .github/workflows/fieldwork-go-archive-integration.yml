@@ -36,10 +36,13 @@ jobs:
           buildkitd-flags: --debug
 
       - name: Materialize ephemeral dependency replacement
+        env:
+          EXPECTED_HEAD: b0df8f0aed8961bb9aabc40ad10aa9430ccadfae
+          EVENT_HEAD: ${{ github.event.pull_request.head.sha }}
         shell: bash
         run: |
           set -euxo pipefail
-          test "$(git rev-parse HEAD^2)" = "${{ github.event.pull_request.head.sha }}"
+          test "$EVENT_HEAD" = "$EXPECTED_HEAD"
           test "$(git -C go-archive-current rev-parse HEAD)" = "9e6d2c7c969f4871fe6ded98ae0e28963fde311f"
           go mod edit -replace "github.com/moby/go-archive=${GITHUB_WORKSPACE}/go-archive-current"
           go mod tidy
