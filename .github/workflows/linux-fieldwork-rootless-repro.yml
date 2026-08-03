@@ -17,8 +17,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version-file: go.mod
           cache: true
@@ -99,7 +99,7 @@ jobs:
         run: |
           if [ -f /tmp/buildkitd-rootless.pid ]; then kill "$(cat /tmp/buildkitd-rootless.pid)" 2>/dev/null || true; fi
           if [ -f /tmp/buildkitd-rootful.pid ]; then sudo kill "$(cat /tmp/buildkitd-rootful.pid)" 2>/dev/null || true; fi
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: linux-fieldwork-rootless-repro
