@@ -77,7 +77,7 @@ jobs:
           PATH="$PWD/bin:$PATH" \
           ROOTFUL_ADDR=unix:///tmp/bk-rootful.sock \
           ROOTLESS_ADDR=unix:///tmp/bk-rootless.sock \
-          ./linux-fieldwork/repro-rootless-oci.sh \
+          /bin/sh ./linux-fieldwork/repro-rootless-oci.sh \
             > /tmp/rootless-repro.log 2>&1
           rc=$?
           set -e
