@@ -17,7 +17,7 @@ func TestMountStubsCleanerForSpec(t *testing.T) {
 			{Destination: "/proc"},
 			{Destination: "/sys"},
 			{Destination: "/sys/fs/cgroup"},
-		}, false)
+		}, true)
 
 		for _, path := range []string{"proc", "sys/fs/cgroup"} {
 			if err := os.MkdirAll(filepath.Join(root, path), 0o755); err != nil {
@@ -26,7 +26,7 @@ func TestMountStubsCleanerForSpec(t *testing.T) {
 		}
 		clean()
 
-		for _, path := range []string{"proc", "sys/fs/cgroup", "sys"} {
+		for _, path := range []string{"proc", "sys/fs/cgroup", "sys/fs", "sys"} {
 			if _, err := os.Lstat(filepath.Join(root, path)); !errors.Is(err, os.ErrNotExist) {
 				t.Fatalf("runtime-created stub %q survived cleanup: %v", path, err)
 			}
@@ -42,7 +42,7 @@ func TestMountStubsCleanerForSpec(t *testing.T) {
 		clean := MountStubsCleanerForSpec(context.Background(), root, []specs.Mount{
 			{Destination: "/proc"},
 			{Destination: "/sys"},
-		}, false)
+		}, true)
 		if err := os.MkdirAll(filepath.Join(root, "proc"), 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -60,7 +60,7 @@ func TestMountStubsCleanerForSpec(t *testing.T) {
 		root := t.TempDir()
 		clean := MountStubsCleanerForSpec(context.Background(), root, []specs.Mount{
 			{Destination: "/proc"},
-		}, false)
+		}, true)
 
 		for _, path := range []string{"proc", "sys"} {
 			if err := os.MkdirAll(filepath.Join(root, path), 0o755); err != nil {
