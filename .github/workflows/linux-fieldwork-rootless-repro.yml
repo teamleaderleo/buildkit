@@ -30,7 +30,14 @@ jobs:
           grep -q "^${user}:" /etc/subuid || echo "${user}:100000:65536" | sudo tee -a /etc/subuid
           grep -q "^${user}:" /etc/subgid || echo "${user}:100000:65536" | sudo tee -a /etc/subgid
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
-      - name: Build exact-commit binaries
+      - name: Apply candidate and run focused unit tests
+        run: |
+          git apply --check --recount linux-fieldwork/0001-executor-clean-finalized-oci-mount-stubs.patch
+          git apply --recount linux-fieldwork/0001-executor-clean-finalized-oci-mount-stubs.patch
+          gofmt -w executor/stubs.go executor/stubs_spec_test.go executor/runcexecutor/executor.go executor/containerdexecutor/executor.go executor/containerdexecutor/executor_unix.go
+          git diff --check
+          go test ./executor
+      - name: Build candidate binaries
         run: |
           mkdir -p bin
           go build -trimpath -o bin/buildkitd ./cmd/buildkitd
@@ -70,18 +77,14 @@ jobs:
           cat /tmp/buildkitd-rootful.log
           cat /tmp/buildkitd-rootless.log
           exit 1
-      - name: Reproduce implicit runtime-mountpoint divergence
+      - name: Verify candidate fixes implicit runtime-mountpoint parity
         run: |
-          set +e
           PATH="$PWD/bin:$PATH" \
           ROOTFUL_ADDR=unix:///tmp/bk-rootful.sock \
           ROOTLESS_ADDR=unix:///tmp/bk-rootless.sock \
           /bin/sh ./linux-fieldwork/repro-rootless-oci.sh \
             > /tmp/rootless-repro-implicit.log 2>&1
-          rc=$?
-          set -e
           cat /tmp/rootless-repro-implicit.log
-          test "$rc" -eq 1
       - name: Verify explicit runtime-mountpoint parity control
         run: |
           PATH="$PWD/bin:$PATH" \
