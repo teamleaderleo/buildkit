@@ -25,7 +25,7 @@ removed that mount.
 diff --git a/executor/stubs.go b/executor/stubs.go
 --- a/executor/stubs.go
 +++ b/executor/stubs.go
-@@ -1,12 +1,15 @@
+@@ -1,13 +1,16 @@
  package executor
  
  import (
@@ -44,7 +44,7 @@ diff --git a/executor/stubs.go b/executor/stubs.go
  )
  
  func MountStubsCleaner(ctx context.Context, dir string, mounts []Mount, recursive bool) func() {
-@@ -16,6 +19,23 @@ func MountStubsCleaner(ctx context.Context, dir string, mounts []Mount, recursive bool) func() {
+@@ -16,6 +19,21 @@ func MountStubsCleaner(ctx context.Context, dir string, mounts []Mount, recursive bool) func() {
  	for _, m := range mounts {
  		names = append(names, m.Dest)
  	}
@@ -66,7 +66,7 @@ diff --git a/executor/stubs.go b/executor/stubs.go
  
  	paths := make([]string, 0, len(names))
  
-@@ -48,6 +68,12 @@ func MountStubsCleaner(ctx context.Context, dir string, mounts []Mount, recursive bool) func() {
+@@ -48,6 +66,14 @@ func MountStubsCleaner(ctx context.Context, dir string, mounts []Mount, recursive bool) func() {
  		}
  	}
  
@@ -124,5 +124,3 @@ diff --git a/executor/containerdexecutor/executor.go b/executor/containerdexecut
  
  	opts := []ctd.NewContainerOpts{
  		ctd.WithSpec(spec),
--- 
-2.47.0
