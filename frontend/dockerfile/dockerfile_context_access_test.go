@@ -31,6 +31,10 @@ func (f *contextAccessFailFS) Open(string) (io.ReadCloser, error) {
 	return nil, f.err
 }
 
+func TestDockerfileLazyContextAccess(t *testing.T) {
+	integration.Run(t, integration.TestFuncs(testDockerfileLazyContextAccess), opts...)
+}
+
 func testDockerfileLazyContextAccess(t *testing.T, sb integration.Sandbox) {
 	requiresLinux(t)
 
