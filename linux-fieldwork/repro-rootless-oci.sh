@@ -4,7 +4,7 @@ set -eu
 : "${ROOTFUL_ADDR:?set ROOTFUL_ADDR to a rootful BuildKit address}"
 : "${ROOTLESS_ADDR:?set ROOTLESS_ADDR to a rootless BuildKit address}"
 
-BASE_IMAGE=${BASE_IMAGE:-docker.io/library/busybox:latest}
+BASE_IMAGE=${BASE_IMAGE:-scratch}
 SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH:-946684800}
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
@@ -12,12 +12,38 @@ work=$(mktemp -d "${TMPDIR:-/tmp}/buildkit-rootless-repro.XXXXXX")
 trap 'rm -rf "$work"' EXIT HUP INT TERM
 
 mkdir -p "$work/context"
+cat >"$work/helper.go" <<'EOF'
+package main
+
+import (
+    "os"
+)
+
+func main() {
+    if err := os.MkdirAll("/generated/deeper", 0o755); err != nil {
+        panic(err)
+    }
+    if err := os.WriteFile("/generated/value", []byte("stable-exec-output\n"), 0o644); err != nil {
+        panic(err)
+    }
+    if err := os.WriteFile("/generated/deeper/value", []byte("stable-nested-output\n"), 0o644); err != nil {
+        panic(err)
+    }
+}
+EOF
+
+CGO_ENABLED=0 go build \
+    -trimpath \
+    -ldflags='-s -w -buildid=' \
+    -o "$work/context/lf-repro-helper" \
+    "$work/helper.go"
+
 cat >"$work/context/Dockerfile" <<'EOF'
-ARG BASE_IMAGE
+ARG BASE_IMAGE=scratch
 FROM ${BASE_IMAGE}
-RUN mkdir -p /generated/deeper \
- && printf '%s\n' stable-exec-output > /generated/value \
- && printf '%s\n' stable-nested-output > /generated/deeper/value
+COPY lf-repro-helper /lf-repro-helper
+ARG SOURCE_DATE_EPOCH
+RUN ["/lf-repro-helper"]
 EOF
 
 build_one() {
