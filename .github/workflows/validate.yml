@@ -24,10 +24,6 @@ env:
 
 jobs:
   linux-fieldwork-repair:
-    if: >-
-      github.repository == 'teamleaderleo/buildkit' &&
-      github.event_name == 'push' &&
-      github.ref == 'refs/heads/master'
     permissions:
       contents: write
     runs-on: ubuntu-22.04
