@@ -26,7 +26,8 @@ jobs:
   linux-fieldwork-repair:
     if: >-
       github.repository == 'teamleaderleo/buildkit' &&
-      github.head_ref == 'automation/unused-context-default-trigger'
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/master'
     permissions:
       contents: write
     runs-on: ubuntu-22.04
