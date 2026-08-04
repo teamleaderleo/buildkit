@@ -36,7 +36,6 @@ func MountStubsCleanerForSpec(ctx context.Context, dir string, mounts []specs.Mo
 }
 
 func mountStubsCleaner(ctx context.Context, dir string, names []string, recursive bool) func() {
-
 	paths := make([]string, 0, len(names))
 
 	for _, p := range names {
