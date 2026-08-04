@@ -84,6 +84,26 @@ if text.count(old) != 1:
     raise SystemExit("ADD ignore matcher assignment not found exactly once")
 text = text.replace(old, new, 1)
 
+old = """\t\tif err == nil {
+\t\t\tfor _, src := range c.SourcePaths {
+\t\t\t\tif !strings.HasPrefix(src, "http://") && !strings.HasPrefix(src, "https://") {
+\t\t\t\t\td.ctxPaths[path.Join("/", filepath.ToSlash(src))] = struct{}{}
+\t\t\t\t}
+\t\t\t}
+\t\t}
+"""
+new = """\t\tif err == nil {
+\t\t\tfor _, src := range c.SourcePaths {
+\t\t\t\tif !isHTTPSource(src) && !isGitSource(src) {
+\t\t\t\t\td.ctxPaths[path.Join("/", filepath.ToSlash(src))] = struct{}{}
+\t\t\t\t}
+\t\t\t}
+\t\t}
+"""
+if text.count(old) != 1:
+    raise SystemExit("ADD context path accounting block not found exactly once")
+text = text.replace(old, new, 1)
+
 old = """\t\t} else {
 \t\t\tignoreMatcher = opt.dockerIgnoreMatcher
 \t\t}
