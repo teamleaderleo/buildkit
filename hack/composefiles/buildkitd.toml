@@ -1,5 +1,0 @@
-[log]
-  level = "debug"
-
-[grpc]
-  debugAddress = "0.0.0.0:6060"
