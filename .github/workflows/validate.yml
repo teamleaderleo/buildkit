@@ -23,40 +23,6 @@ env:
   SETUP_BUILDKIT_IMAGE: "moby/buildkit:latest"
 
 jobs:
-  linux-fieldwork-repair:
-    permissions:
-      contents: write
-    runs-on: ubuntu-22.04
-    timeout-minutes: 30
-    steps:
-      - name: Check out repair branch
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: repair/unused-context-lazy-load-e19f177
-          fetch-depth: 0
-      - name: Apply and format repair
-        shell: bash
-        run: |
-          set -euxo pipefail
-          python3 .github/scripts/apply_unused_context_repair.py
-          gofmt -w frontend/dockerfile/dockerfile2llb/convert.go frontend/dockerfile/dockerfile_context_access_test.go
-          git diff --check
-      - name: Compile affected packages
-        shell: bash
-        run: |
-          set -euxo pipefail
-          go test ./frontend/dockerfile/dockerfile2llb
-          go test ./frontend/dockerfile -run '^$'
-      - name: Commit repair branch
-        shell: bash
-        run: |
-          set -euxo pipefail
-          git config user.name 'Linux Fieldwork'
-          git config user.email 'fieldwork@example.invalid'
-          git add frontend/dockerfile/dockerfile2llb/convert.go frontend/dockerfile/dockerfile_context_access_test.go
-          git commit -m 'dockerfile: load local context only when consumed'
-          git push origin HEAD:repair/unused-context-lazy-load-e19f177
-
   prepare:
     runs-on: ubuntu-24.04
     outputs:
