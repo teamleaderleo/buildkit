@@ -12,6 +12,9 @@ concurrency:
   group: materialize-runc-mount-stubs-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
+env:
+  SOURCE_BASE: df0761886a20e368d75e0aa6bb3f20874f58b692
+
 jobs:
   materialize:
     runs-on: ubuntu-24.04
@@ -21,7 +24,7 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 2
+          fetch-depth: 0
           persist-credentials: true
 
       - name: Check out accepted evidence carrier
@@ -37,8 +40,8 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
-          test "$(git rev-parse HEAD^)" = df0761886a20e368d75e0aa6bb3f20874f58b692
-          test "$(git diff --name-only HEAD^ HEAD)" = .github/workflows/fieldwork-materialize-runc-mount-stub-cleanup.yml
+          test "$(git merge-base HEAD "$SOURCE_BASE")" = "$SOURCE_BASE"
+          test "$(git diff --name-only "$SOURCE_BASE" HEAD)" = .github/workflows/fieldwork-materialize-runc-mount-stub-cleanup.yml
 
           git apply --check \
             --include=executor/stubs.go \
@@ -52,9 +55,9 @@ jobs:
           git add -N executor/stubs_spec_test.go
           rm .github/workflows/fieldwork-materialize-runc-mount-stub-cleanup.yml
 
-          test "$(git diff --name-only | sort)" = $'.github/workflows/fieldwork-materialize-runc-mount-stub-cleanup.yml\nexecutor/runcexecutor/executor.go\nexecutor/stubs.go\nexecutor/stubs_spec_test.go'
+          test "$(git diff --name-only "$SOURCE_BASE" | sort)" = $'executor/runcexecutor/executor.go\nexecutor/stubs.go\nexecutor/stubs_spec_test.go'
           gofmt -w executor/stubs.go executor/stubs_spec_test.go executor/runcexecutor/executor.go
-          git diff --check
+          git diff --check "$SOURCE_BASE"
 
       - name: Run executor unit tests
         run: go test ./executor
