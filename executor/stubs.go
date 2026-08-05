@@ -21,7 +21,7 @@ func MountStubsCleaner(ctx context.Context, dir string, mounts []Mount, recursiv
 	for _, m := range mounts {
 		names = append(names, m.Dest)
 	}
-	return mountStubsCleaner(ctx, dir, names, recursive)
+	return mountStubsCleaner(ctx, dir, names, recursive, false)
 }
 
 // MountStubsCleanerForSpec removes empty mountpoint stubs created for the
@@ -32,10 +32,10 @@ func MountStubsCleanerForSpec(ctx context.Context, dir string, mounts []specs.Mo
 	for _, m := range mounts {
 		names = append(names, m.Destination)
 	}
-	return mountStubsCleaner(ctx, dir, names, recursive)
+	return mountStubsCleaner(ctx, dir, names, recursive, true)
 }
 
-func mountStubsCleaner(ctx context.Context, dir string, names []string, recursive bool) func() {
+func mountStubsCleaner(ctx context.Context, dir string, names []string, recursive bool, deepestFirst bool) func() {
 
 	paths := make([]string, 0, len(names))
 
@@ -68,13 +68,15 @@ func mountStubsCleaner(ctx context.Context, dir string, names []string, recursiv
 		}
 	}
 
-	slices.SortFunc(paths, func(a, b string) int {
-		if n := cmp.Compare(len(b), len(a)); n != 0 {
-			return n
-		}
-		return strings.Compare(a, b)
-	})
-	paths = slices.Compact(paths)
+	if deepestFirst {
+		slices.SortFunc(paths, func(a, b string) int {
+			if n := cmp.Compare(len(b), len(a)); n != 0 {
+				return n
+			}
+			return strings.Compare(a, b)
+		})
+		paths = slices.Compact(paths)
+	}
 
 	return func() {
 		for _, p := range paths {
