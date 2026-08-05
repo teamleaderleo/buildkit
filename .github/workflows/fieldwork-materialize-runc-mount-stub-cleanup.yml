@@ -49,6 +49,7 @@ jobs:
             --include=executor/runcexecutor/executor.go \
             accepted-carrier/linux-fieldwork/0001-executor-clean-finalized-oci-mount-stubs.patch
           cp accepted-carrier/executor/stubs_spec_test.go executor/stubs_spec_test.go
+          git add -N executor/stubs_spec_test.go
           rm .github/workflows/fieldwork-materialize-runc-mount-stub-cleanup.yml
 
           test "$(git diff --name-only | sort)" = $'.github/workflows/fieldwork-materialize-runc-mount-stub-cleanup.yml\nexecutor/runcexecutor/executor.go\nexecutor/stubs.go\nexecutor/stubs_spec_test.go'
