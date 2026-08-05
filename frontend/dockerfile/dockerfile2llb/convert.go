@@ -761,18 +761,24 @@ func (dctx *dispatchContext) dispatchStages(ctx context.Context, allReachable ma
 	buildContext := &mutableOutput{}
 	ctxPaths := map[string]struct{}{}
 
+	var dockerIgnoreMatcherOnce sync.Once
 	var dockerIgnoreMatcher *patternmatcher.PatternMatcher
-	if dctx.opt.Client != nil {
-		dockerIgnorePatterns, err := dctx.opt.Client.DockerIgnorePatterns(ctx)
-		if err != nil {
-			return nil, nil, err
-		}
-		if len(dockerIgnorePatterns) > 0 {
-			dockerIgnoreMatcher, err = patternmatcher.New(dockerIgnorePatterns)
-			if err != nil {
-				return nil, nil, err
+	var dockerIgnoreMatcherErr error
+	getDockerIgnoreMatcher := func() (*patternmatcher.PatternMatcher, error) {
+		dockerIgnoreMatcherOnce.Do(func() {
+			if dctx.opt.Client == nil {
+				return
 			}
-		}
+			dockerIgnorePatterns, err := dctx.opt.Client.DockerIgnorePatterns(ctx)
+			if err != nil {
+				dockerIgnoreMatcherErr = err
+				return
+			}
+			if len(dockerIgnorePatterns) > 0 {
+				dockerIgnoreMatcher, dockerIgnoreMatcherErr = patternmatcher.New(dockerIgnorePatterns)
+			}
+		})
+		return dockerIgnoreMatcher, dockerIgnoreMatcherErr
 	}
 
 	for _, d := range dctx.allDispatchStates.states {
@@ -841,7 +847,7 @@ func (dctx *dispatchContext) dispatchStages(ctx context.Context, allReachable ma
 			llbCaps:             dctx.opt.LLBCaps,
 			sourceMap:           dctx.opt.SourceMap,
 			lint:                dctx.lint,
-			dockerIgnoreMatcher: dockerIgnoreMatcher,
+			dockerIgnoreMatcher: getDockerIgnoreMatcher,
 		}
 
 		for _, cmd := range d.commands {
@@ -898,18 +904,20 @@ func (dctx *dispatchContext) finalizeResultImage(ctx context.Context, target *di
 	}
 
 	opts := filterPaths(ctxPaths)
-	bctx := dctx.opt.MainContext
-	if dctx.opt.Client != nil {
-		var err error
-		bctx, err = dctx.opt.Client.MainContext(ctx, opts...)
-		if err != nil {
-			return err
+	if len(ctxPaths) > 0 || target.scanContext {
+		bctx := dctx.opt.MainContext
+		if dctx.opt.Client != nil {
+			var err error
+			bctx, err = dctx.opt.Client.MainContext(ctx, opts...)
+			if err != nil {
+				return err
+			}
+		} else if bctx == nil {
+			bctx = dockerui.DefaultMainContext(opts...)
 		}
-	} else if bctx == nil {
-		bctx = dockerui.DefaultMainContext(opts...)
-	}
 
-	buildContext.Output = bctx.Output()
+		buildContext.Output = bctx.Output()
+	}
 
 	defaults := []llb.ConstraintsOpt{
 		llb.Platform(dctx.platformOpt.targetPlatform),
@@ -997,7 +1005,7 @@ type dispatchOpt struct {
 	llbCaps             *apicaps.CapSet
 	sourceMap           *llb.SourceMap
 	lint                *linter.Linter
-	dockerIgnoreMatcher *patternmatcher.PatternMatcher
+	dockerIgnoreMatcher func() (*patternmatcher.PatternMatcher, error)
 }
 
 func getEnv(state llb.State) shell.EnvGetter {
@@ -1070,6 +1078,10 @@ func dispatch(d *dispatchState, cmd command, opt dispatchOpt) error {
 	case *instructions.WorkdirCommand:
 		err = dispatchWorkdir(d, c, true, &opt)
 	case *instructions.AddCommand:
+		ignoreMatcher, err := opt.dockerIgnoreMatcher()
+		if err != nil {
+			return err
+		}
 		err = dispatchCopy(d, copyConfig{
 			params:          c.SourcesAndDest,
 			excludePatterns: c.ExcludePatterns,
@@ -1083,7 +1095,7 @@ func dispatch(d *dispatchState, cmd command, opt dispatchOpt) error {
 			checksum:        c.Checksum,
 			unpack:          c.Unpack,
 			location:        c.Location(),
-			ignoreMatcher:   opt.dockerIgnoreMatcher,
+			ignoreMatcher:   ignoreMatcher,
 			opt:             opt,
 		})
 		if err == nil {
@@ -1125,7 +1137,10 @@ func dispatch(d *dispatchState, cmd command, opt dispatchOpt) error {
 			}
 			l = src.state
 		} else {
-			ignoreMatcher = opt.dockerIgnoreMatcher
+			ignoreMatcher, err = opt.dockerIgnoreMatcher()
+			if err != nil {
+				return err
+			}
 		}
 		err = dispatchCopy(d, copyConfig{
 			params:          c.SourcesAndDest,
