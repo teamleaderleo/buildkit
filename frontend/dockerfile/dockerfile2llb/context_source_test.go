@@ -5,6 +5,8 @@ import "testing"
 func TestIsDefaultContextSource(t *testing.T) {
 	t.Parallel()
 
+	// These strings exercise parser classification only; the test never resolves
+	// or fetches any remote source.
 	tests := []struct {
 		name string
 		src  string
