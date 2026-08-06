@@ -351,6 +351,17 @@ func dispatchCopy(d *dispatchState, cfg copyConfig) error {
 	return commitToHistory(&d.image, commitMessage.String(), true, &d.state, d.epoch)
 }
 
+func isLocalContextSource(src string) bool {
+	gitRef, isGit, err := dfgitutil.ParseGitRef(src)
+	if err != nil && isGit {
+		return false
+	}
+	if err == nil && gitRef != nil && !gitRef.IndistinguishableFromLocal {
+		return false
+	}
+	return !isHTTPSource(src)
+}
+
 func isHTTPSource(src string) bool {
 	if !strings.HasPrefix(src, "http://") && !strings.HasPrefix(src, "https://") {
 		return false

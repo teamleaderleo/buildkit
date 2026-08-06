@@ -1082,7 +1082,7 @@ func dispatch(d *dispatchState, cmd command, opt dispatchOpt) error {
 	case *instructions.AddCommand:
 		var ignoreMatcher *patternmatcher.PatternMatcher
 		for _, src := range c.SourcePaths {
-			if !isHTTPSource(src) && !isGitSource(src) {
+			if isLocalContextSource(src) {
 				if opt.dockerIgnoreMatcher != nil {
 					ignoreMatcher, err = opt.dockerIgnoreMatcher()
 					if err != nil {
@@ -1110,7 +1110,7 @@ func dispatch(d *dispatchState, cmd command, opt dispatchOpt) error {
 		})
 		if err == nil {
 			for _, src := range c.SourcePaths {
-				if !isHTTPSource(src) && !isGitSource(src) {
+				if isLocalContextSource(src) {
 					d.ctxPaths[path.Join("/", filepath.ToSlash(src))] = struct{}{}
 				}
 			}
