@@ -62,6 +62,41 @@ LABEL org.mobyproject.buildkit.test=unused-context
 			wantSuccess: true,
 		},
 		{
+			name: "inline-copy",
+			dockerfile: `
+FROM scratch
+COPY <<EOF /inline
+inline
+EOF
+`,
+			wantAccess:  false,
+			wantSuccess: true,
+		},
+		{
+			name: "stage-copy",
+			dockerfile: `
+FROM scratch AS source
+COPY <<EOF /probe
+stage
+EOF
+FROM scratch
+COPY --from=source /probe /probe
+`,
+			wantAccess:  false,
+			wantSuccess: true,
+		},
+		{
+			name: "unreachable-local-copy",
+			dockerfile: `
+FROM scratch AS unused
+COPY marker /marker
+FROM scratch
+LABEL org.mobyproject.buildkit.test=unreachable-context
+`,
+			wantAccess:  false,
+			wantSuccess: true,
+		},
+		{
 			name: "local-copy",
 			dockerfile: `
 FROM scratch
