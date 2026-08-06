@@ -62,10 +62,30 @@ LABEL org.mobyproject.buildkit.test=unused-context
 			wantSuccess: true,
 		},
 		{
+			name: "inline-copy",
+			dockerfile: `
+FROM scratch
+COPY <<EOF /marker
+inline
+EOF
+`,
+			wantAccess:  false,
+			wantSuccess: true,
+		},
+		{
 			name: "local-copy",
 			dockerfile: `
 FROM scratch
 COPY marker /marker
+`,
+			wantAccess:  true,
+			wantSuccess: false,
+		},
+		{
+			name: "git-looking-local-add",
+			dockerfile: `
+FROM scratch
+ADD github.com/example/repository /repository
 `,
 			wantAccess:  true,
 			wantSuccess: false,
