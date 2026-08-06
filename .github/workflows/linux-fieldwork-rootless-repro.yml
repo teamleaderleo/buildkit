@@ -1,0 +1,111 @@
+name: Linux Fieldwork rootless reproducibility
+
+on:
+  push:
+    branches:
+      - linux-fieldwork/rootless-reproducibility
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  two-worker-discriminator:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Install runtime dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y rootlesskit runc uidmap
+          user=$(id -un)
+          grep -q "^${user}:" /etc/subuid || echo "${user}:100000:65536" | sudo tee -a /etc/subuid
+          grep -q "^${user}:" /etc/subgid || echo "${user}:100000:65536" | sudo tee -a /etc/subgid
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+      - name: Apply candidate and run focused unit tests
+        run: |
+          git apply --check linux-fieldwork/0001-executor-clean-finalized-oci-mount-stubs.patch
+          git apply linux-fieldwork/0001-executor-clean-finalized-oci-mount-stubs.patch
+          gofmt -w executor/stubs.go executor/stubs_spec_test.go executor/runcexecutor/executor.go executor/containerdexecutor/executor.go executor/containerdexecutor/executor_unix.go
+          git diff --check
+          go test ./executor
+      - name: Build candidate binaries
+        run: |
+          mkdir -p bin
+          go build -trimpath -o bin/buildkitd ./cmd/buildkitd
+          go build -trimpath -o bin/buildctl ./cmd/buildctl
+      - name: Start matching rootful and rootless workers
+        run: |
+          set -eu
+          mkdir -p /tmp/bk-rootful /tmp/bk-rootless /tmp/bk-rootless-runtime /tmp/bk-rootlesskit
+          sudo ./bin/buildkitd \
+            --root /tmp/bk-rootful \
+            --addr unix:///tmp/bk-rootful.sock \
+            --oci-worker-snapshotter=native \
+            --containerd-worker=false \
+            >/tmp/buildkitd-rootful.log 2>&1 &
+          echo $! >/tmp/buildkitd-rootful.pid
+
+          XDG_RUNTIME_DIR=/tmp/bk-rootless-runtime \
+          rootlesskit \
+            --state-dir=/tmp/bk-rootlesskit \
+            --net=host \
+            ./bin/buildkitd \
+              --root /tmp/bk-rootless \
+              --addr unix:///tmp/bk-rootless.sock \
+              --oci-worker-snapshotter=native \
+              --containerd-worker=false \
+            >/tmp/buildkitd-rootless.log 2>&1 &
+          echo $! >/tmp/buildkitd-rootless.pid
+
+          for _ in $(seq 1 120); do
+            if [ -S /tmp/bk-rootful.sock ] && [ -S /tmp/bk-rootless.sock ]; then
+              sudo chmod 666 /tmp/bk-rootful.sock
+              exit 0
+            fi
+            sleep 1
+          done
+
+          cat /tmp/buildkitd-rootful.log
+          cat /tmp/buildkitd-rootless.log
+          exit 1
+      - name: Verify candidate fixes implicit runtime-mountpoint parity
+        run: |
+          PATH="$PWD/bin:$PATH" \
+          ROOTFUL_ADDR=unix:///tmp/bk-rootful.sock \
+          ROOTLESS_ADDR=unix:///tmp/bk-rootless.sock \
+          /bin/sh ./linux-fieldwork/repro-rootless-oci.sh \
+            > /tmp/rootless-repro-implicit.log 2>&1
+          cat /tmp/rootless-repro-implicit.log
+      - name: Verify explicit runtime-mountpoint parity control
+        run: |
+          PATH="$PWD/bin:$PATH" \
+          ROOTFUL_ADDR=unix:///tmp/bk-rootful.sock \
+          ROOTLESS_ADDR=unix:///tmp/bk-rootless.sock \
+          PRECREATE_RUNTIME_DIRS=1 \
+          /bin/sh ./linux-fieldwork/repro-rootless-oci.sh \
+            > /tmp/rootless-repro-explicit.log 2>&1
+          cat /tmp/rootless-repro-explicit.log
+      - name: Stop workers
+        if: always()
+        run: |
+          if [ -f /tmp/buildkitd-rootless.pid ]; then kill "$(cat /tmp/buildkitd-rootless.pid)" 2>/dev/null || true; fi
+          if [ -f /tmp/buildkitd-rootful.pid ]; then sudo kill "$(cat /tmp/buildkitd-rootful.pid)" 2>/dev/null || true; fi
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: linux-fieldwork-rootless-repro
+          path: |
+            /tmp/buildkitd-rootful.log
+            /tmp/buildkitd-rootless.log
+            /tmp/rootless-repro-implicit.log
+            /tmp/rootless-repro-explicit.log
+          if-no-files-found: warn
