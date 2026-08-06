@@ -146,20 +146,6 @@ jobs:
       -
         name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      -
-        name: Apply unused-context candidate
-        if: ${{ github.head_ref == 'research/unused-context-lazy-load' || github.ref == 'refs/heads/research/unused-context-lazy-load' }}
-        shell: bash
-        run: |
-          set -euxo pipefail
-          patch=.github/patches/unused-context-lazy-main-context.patch
-          git apply --check --recount "$patch"
-          git apply --recount "$patch"
-          git diff --check
-          gofmt -d frontend/dockerfile/dockerfile2llb/convert.go | tee /tmp/candidate-gofmt.diff
-          test ! -s /tmp/candidate-gofmt.diff
       -
         name: Expose GitHub Runtime
         uses: crazy-max/ghaction-github-runtime@04d248b84655b509d8c44dc1d6f990c879747487 # v4.0.0
