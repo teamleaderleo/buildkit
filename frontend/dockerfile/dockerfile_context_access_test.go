@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	gofs "io/fs"
+	"runtime"
 	"sync/atomic"
 	"testing"
 
@@ -36,7 +37,9 @@ func init() {
 }
 
 func testDockerfileLazyContextAccess(t *testing.T, sb integration.Sandbox) {
-	requiresLinux(t)
+	if runtime.GOOS != "linux" {
+		t.Skip("requires Linux local-mount semantics")
+	}
 
 	frontend := getFrontend(t, sb)
 	c, err := client.New(sb.Context(), sb.Address())
