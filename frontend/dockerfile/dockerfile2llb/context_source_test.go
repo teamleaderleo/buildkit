@@ -19,6 +19,7 @@ func TestIsDefaultContextSource(t *testing.T) {
 		{name: "https-git", src: "https://github.com/moby/buildkit.git", want: false},
 		{name: "git-scheme", src: "git://github.com/moby/buildkit.git", want: false},
 		{name: "scp-style-git", src: "git@github.com:moby/buildkit.git", want: false},
+		{name: "ssh-git", src: "ssh://git@github.com/moby/buildkit.git", want: false},
 	}
 
 	for _, tc := range tests {
