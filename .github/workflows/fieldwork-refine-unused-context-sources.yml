@@ -1,0 +1,88 @@
+name: Fieldwork refine unused default context sources
+
+on:
+  push:
+    branches:
+      - research/unused-context-lazy-load
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: fieldwork-refine-unused-context-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  BASE_SHA: 275d6864ff0ce91a06225af5f5b012887bd257cf
+
+jobs:
+  verify-and-materialize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Check out exact controlled head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up repository Go version
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Apply fail-closed source refinement
+        shell: bash
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor "$BASE_SHA" HEAD
+
+          gofmt -d \
+            frontend/dockerfile/dockerfile_context_access_test.go \
+            frontend/dockerfile/dockerfile2llb/context_source_test.go \
+            | tee /tmp/test-gofmt.diff
+          test ! -s /tmp/test-gofmt.diff
+
+          python3 .github/fieldwork/refine-unused-context-sources.py
+          gofmt -w frontend/dockerfile/dockerfile2llb/convert.go
+
+          test "$(git diff --name-only)" = \
+            'frontend/dockerfile/dockerfile2llb/convert.go'
+          git diff --check
+
+      - name: Compile classifier, converter, and frontend packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          go test -mod=vendor ./frontend/dockerfile/dockerfile2llb \
+            -run '^TestIsDefaultContextSource$'
+          go test -mod=vendor ./frontend/dockerfile/dockerfile2llb -run '^$'
+          go test -mod=vendor ./frontend/dockerfile -run '^$'
+
+      - name: Materialize refined source-only candidate
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TARGET_BRANCH: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$TARGET_BRANCH" = 'research/unused-context-lazy-load'
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add frontend/dockerfile/dockerfile2llb/convert.go
+          git rm \
+            .github/fieldwork/refine-unused-context-sources.py \
+            .github/workflows/fieldwork-refine-unused-context-sources.yml
+          git commit -m 'dockerfile: keep remote ADD sources context-free'
+
+          expected=$'frontend/dockerfile/dockerfile2llb/context_source_test.go\nfrontend/dockerfile/dockerfile2llb/convert.go\nfrontend/dockerfile/dockerfile_context_access_test.go'
+          test "$(git diff --name-only "$BASE_SHA" HEAD | sort)" = "$expected"
+          git diff --check "$BASE_SHA" HEAD
+
+          auth="$(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 -w0)"
+          git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $auth" \
+            push origin HEAD:"$TARGET_BRANCH"
