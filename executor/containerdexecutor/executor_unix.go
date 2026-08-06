@@ -44,7 +44,7 @@ func getUserSpec(user, rootfsPath string) (specs.User, error) {
 	}, nil
 }
 
-func (w *containerdExecutor) prepareExecutionEnv(ctx context.Context, rootMount executor.Mount, mounts []executor.Mount, meta executor.Meta, details *containerState, netMode pb.NetMode) (string, string, func(), error) {
+func (w *containerdExecutor) prepareExecutionEnv(ctx context.Context, rootMount executor.Mount, _ []executor.Mount, meta executor.Meta, details *containerState, netMode pb.NetMode) (string, string, func(), error) {
 	var releasers []func()
 	releaseAll := func() {
 		for _, release := range slices.Backward(releasers) {
@@ -107,7 +107,6 @@ func (w *containerdExecutor) prepareExecutionEnv(ctx context.Context, rootMount 
 			bklog.G(ctx).WithError(err).Error("failed to unmount rootfs")
 		}
 	})
-	releasers = append(releasers, executor.MountStubsCleaner(ctx, details.rootfsPath, mounts, meta.RemoveMountStubsRecursive))
 
 	return resolvConf, hostsFile, releaseAll, nil
 }
