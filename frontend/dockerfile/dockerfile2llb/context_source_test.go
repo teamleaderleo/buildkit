@@ -3,8 +3,6 @@ package dockerfile2llb
 import "testing"
 
 func TestIsDefaultContextSource(t *testing.T) {
-	t.Parallel()
-
 	// These strings exercise parser classification only; the test never resolves
 	// or fetches any remote source.
 	tests := []struct {
@@ -23,7 +21,6 @@ func TestIsDefaultContextSource(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
 			if got := isDefaultContextSource(tc.src); got != tc.want {
 				t.Fatalf("isDefaultContextSource(%q) = %v, want %v", tc.src, got, tc.want)
 			}
