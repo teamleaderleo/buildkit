@@ -1036,6 +1036,10 @@ func (e *envsFromState) Keys() []string {
 	return e.env.Keys()
 }
 
+func isDefaultContextSource(src string) bool {
+	return !isHTTPSource(src) && !isGitSource(src)
+}
+
 func dispatch(d *dispatchState, cmd command, opt dispatchOpt) error {
 	opt.lint = opt.lint.WithMergedConfigFromComments(cmd.Comments())
 
@@ -1078,9 +1082,16 @@ func dispatch(d *dispatchState, cmd command, opt dispatchOpt) error {
 	case *instructions.WorkdirCommand:
 		err = dispatchWorkdir(d, c, true, &opt)
 	case *instructions.AddCommand:
-		ignoreMatcher, err := opt.dockerIgnoreMatcher()
-		if err != nil {
-			return err
+		var ignoreMatcher *patternmatcher.PatternMatcher
+		for _, src := range c.SourcePaths {
+			if !isDefaultContextSource(src) {
+				continue
+			}
+			ignoreMatcher, err = opt.dockerIgnoreMatcher()
+			if err != nil {
+				return err
+			}
+			break
 		}
 		err = dispatchCopy(d, copyConfig{
 			params:          c.SourcesAndDest,
@@ -1100,7 +1111,7 @@ func dispatch(d *dispatchState, cmd command, opt dispatchOpt) error {
 		})
 		if err == nil {
 			for _, src := range c.SourcePaths {
-				if !strings.HasPrefix(src, "http://") && !strings.HasPrefix(src, "https://") {
+				if isDefaultContextSource(src) {
 					d.ctxPaths[path.Join("/", filepath.ToSlash(src))] = struct{}{}
 				}
 			}
