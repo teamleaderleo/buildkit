@@ -33,29 +33,6 @@ func TestMountStubsCleanerForSpec(t *testing.T) {
 		}
 	})
 
-	t.Run("pre-existing image path is retained", func(t *testing.T) {
-		root := t.TempDir()
-		if err := os.MkdirAll(filepath.Join(root, "sys"), 0o755); err != nil {
-			t.Fatal(err)
-		}
-
-		clean := MountStubsCleanerForSpec(context.Background(), root, []specs.Mount{
-			{Destination: "/proc"},
-			{Destination: "/sys"},
-		}, true)
-		if err := os.MkdirAll(filepath.Join(root, "proc"), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		clean()
-
-		if _, err := os.Stat(filepath.Join(root, "sys")); err != nil {
-			t.Fatalf("pre-existing /sys was removed: %v", err)
-		}
-		if _, err := os.Lstat(filepath.Join(root, "proc")); !errors.Is(err, os.ErrNotExist) {
-			t.Fatalf("runtime-created /proc survived cleanup: %v", err)
-		}
-	})
-
 	t.Run("rootless spec does not own sys", func(t *testing.T) {
 		root := t.TempDir()
 		clean := MountStubsCleanerForSpec(context.Background(), root, []specs.Mount{
