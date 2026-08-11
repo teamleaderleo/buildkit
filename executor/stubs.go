@@ -10,6 +10,7 @@ import (
 
 	"github.com/containerd/continuity/fs"
 	"github.com/moby/buildkit/util/bklog"
+	specs "github.com/opencontainers/runtime-spec/specs-go"
 )
 
 func MountStubsCleaner(ctx context.Context, dir string, mounts []Mount, recursive bool) func() {
@@ -18,7 +19,20 @@ func MountStubsCleaner(ctx context.Context, dir string, mounts []Mount, recursiv
 	for _, m := range mounts {
 		names = append(names, m.Dest)
 	}
+	return mountStubsCleaner(ctx, dir, names, recursive)
+}
 
+// MountStubsCleanerForSpec cleans mount stubs from a finalized OCI spec.
+func MountStubsCleanerForSpec(ctx context.Context, dir string, mounts []specs.Mount, recursive bool) func() {
+	names := []string{"/etc/resolv.conf", "/etc/hosts"}
+
+	for _, m := range mounts {
+		names = append(names, m.Destination)
+	}
+	return mountStubsCleaner(ctx, dir, names, recursive)
+}
+
+func mountStubsCleaner(ctx context.Context, dir string, names []string, recursive bool) func() {
 	paths := make([]string, 0, len(names))
 
 	for _, p := range names {
