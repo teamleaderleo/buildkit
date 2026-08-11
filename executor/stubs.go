@@ -1,12 +1,10 @@
 package executor
 
 import (
-	"cmp"
 	"context"
 	"errors"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"syscall"
 
@@ -21,21 +19,20 @@ func MountStubsCleaner(ctx context.Context, dir string, mounts []Mount, recursiv
 	for _, m := range mounts {
 		names = append(names, m.Dest)
 	}
-	return mountStubsCleaner(ctx, dir, names, recursive, false)
+	return mountStubsCleaner(ctx, dir, names, recursive)
 }
 
-// MountStubsCleanerForSpec removes empty mountpoint stubs created for the
-// finalized OCI spec. Paths that existed before execution remain untouched.
+// MountStubsCleanerForSpec cleans mount stubs from a finalized OCI spec.
 func MountStubsCleanerForSpec(ctx context.Context, dir string, mounts []specs.Mount, recursive bool) func() {
 	names := []string{"/etc/resolv.conf", "/etc/hosts"}
 
 	for _, m := range mounts {
 		names = append(names, m.Destination)
 	}
-	return mountStubsCleaner(ctx, dir, names, recursive, true)
+	return mountStubsCleaner(ctx, dir, names, recursive)
 }
 
-func mountStubsCleaner(ctx context.Context, dir string, names []string, recursive bool, deepestFirst bool) func() {
+func mountStubsCleaner(ctx context.Context, dir string, names []string, recursive bool) func() {
 	paths := make([]string, 0, len(names))
 
 	for _, p := range names {
@@ -65,16 +62,6 @@ func mountStubsCleaner(ctx context.Context, dir string, names []string, recursiv
 			}
 			realPath = realPathNext
 		}
-	}
-
-	if deepestFirst {
-		slices.SortFunc(paths, func(a, b string) int {
-			if n := cmp.Compare(len(b), len(a)); n != 0 {
-				return n
-			}
-			return strings.Compare(a, b)
-		})
-		paths = slices.Compact(paths)
 	}
 
 	return func() {
